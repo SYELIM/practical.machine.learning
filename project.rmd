@@ -1,0 +1,148 @@
+---
+title: "practical machine learning project"
+author: "Seo-yeon Lim"
+date: "April 3, 2018"
+output: html_document
+---
+
+## Background
+
+Human Activity Recognition (HAR) has become an interest area for many researchers. Using wearable devices, it is easy to collect data on physical activities, behavior patterns and health issues in a relatively inexpensive manner. Until now, the most popular question that has been asked was "how *much* of a particular activity people do." Throughout this project, our main goal would be to answer the question of "how *well* they perform particular activity."
+
+The data used for this project is described in this following link: http://groupware.les.inf.puc-rio.br/har.
+
+6 young healthy participants were asked to perform one set of 10 repetitions of the unilateral dumbell biceps curl in 5 different fashions:
+
+- Class A: exactly according to the specification (correct method)
+- Class B: throwing the elbows to the front
+- Class C: lifting the dumbbell only halfway
+- Class D: lowering the dumbbell only halfway
+- Class E: throwing the hips to the front. 
+
+
+## Data Loading and Processing
+
+First, we will load necessary packages for this project. 
+
+```{r}
+Sys.setlocale("LC_TIME","C") #change language to English
+suppressWarnings(library(caret))
+suppressWarnings(library(randomForest))
+suppressWarnings(library(rattle))
+suppressWarnings(library(dplyr))
+suppressWarnings(library(ggplot2))
+```
+
+We will download and load the training and testing data. Using **dim** function, we can see that there are 160 variables in both of datasets. .
+```{r}
+fileurl1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fileurl1, destfile = "./pmltraining.csv")
+training <- read.csv("pmltraining.csv")
+dim(training)
+
+fileurl2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(fileurl2, destfile = "./pmltesting.csv")
+testing <- read.csv("pmltesting.csv")
+dim(testing)
+```
+
+We take a look at the dataset, and we can see that there are numerous columns with NA values and blank values. We will remove these vlaues, as well as zero covariate variables, as those don't provide much information. Then we will remove the identification variable and timestamps. As a result, we narrowed numbers of variables down to 54. 
+
+```{r, results="hide"}
+View(training)
+```
+```{r}
+NAremove<- sapply(training, function(x) mean(is.na(x))) >0.90
+trainingclean <- training[,NAremove==FALSE]
+
+zerocor <- nearZeroVar(trainingclean)
+trainingclean <- trainingclean[,-zerocor]
+trainingclean <- trainingclean[,-c(1:5)]
+```
+
+We do the same for the testing set.
+```{r}
+NAremove<- sapply(testing, function(x) mean(is.na(x))) >0.90
+testingclean <- testing[,NAremove==FALSE]
+
+zerocor <- nearZeroVar(testingclean)
+testingclean <- testingclean[,-zerocor]
+testingclean <- testingclean[,-c(1:5)]
+```
+
+After some data cleaning, we create a new training dataset.
+```{r}
+set.seed(54321)
+inTrain <- createDataPartition(trainingclean$classe, p=0.70, list=FALSE)
+trainingset <- trainingclean[inTrain, ]
+testingset <- trainingclean[-inTrain,]
+dim(trainingset)
+dim(testingset)
+```
+
+## Prediction Modeling
+Total three methods of prediction modeling will be applied to the **trainingset**:
+1. Decision Trees
+2. Random Forest
+3. Gradient Boosting method
+
+
+### 1. Decision Trees
+```{r}
+trainctrl <- trainControl(method="cv", number = 5, verboseIter = FALSE)
+fit1 <- train(classe~., data=trainingset, method="rpart", trControl=trainctrl)
+fancyRpartPlot(fit1$finalModel)
+
+predict1 <- predict(fit1, newdata=testingset)
+fit1ConfMat <- confusionMatrix(testingset$classe, predict1)
+fit1ConfMat
+
+fit1ConfMat$overall[1]
+
+```
+
+The accuracy is about 55.7%. We can state that it is hard for other predictors to predict for the variable **classe**.
+
+### 2. Random Forests
+```{r}
+fit2 <- train(classe~., data=trainingset, method="rf", trControl = trainctrl, verbose = FALSE)
+fit2$finalModel
+
+predict2 <- predict(fit2, newdata=testingset)
+fit2ConfMat <- confusionMatrix(testingset$classe, predict2)
+fit2ConfMat
+fit2ConfMat$overall[1]
+
+plot(fit2, main= "Accuracy of Random Forests")
+
+```
+
+The accuracy for random forests model was high, about 99.8%. We can also see in the plot that somewhat between 25 to 30 randomly selected predictors have the highest accuracy. 
+
+### 3. Gradient Boosting Method
+```{r}
+fit3 <- train(classe~., data=trainingset, method="gbm", trControl= trainctrl, verbose= FALSE)
+fit3$finalModel
+
+predict3 <- predict(fit3, newdata=testingset)
+fit3ConfMat <- confusionMatrix(testingset$classe, predict3)
+fit3ConfMat
+fit3ConfMat$overall[1]
+
+plot(fit3, main= "Accuracy of Gradient Boosting Method")
+```
+
+The accuracy of gradient boosting method is high as well, with 98.9%. However, it is slightly lower than the random forests method. 
+
+## Application of Model
+The accuracy of three methods listed in descending order are following:
+
+1. Random Forest: 0.9984707
+2. Gradient Boosting Method: 0.988785
+3. Classification Tree: 0.5568394.
+
+Therefore, random forest will be used to solve quiz problems. 
+```{r}
+predictquiz <- predict(fit2, newdata=testingclean)
+predictquiz
+```
